@@ -25,8 +25,8 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.core.JsonGenerator;
@@ -53,6 +53,8 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
+import org.springframework.aop.TargetSource;
+import org.springframework.aop.framework.Advised;
 import org.springframework.beans.BeansException;
 import org.springframework.boot.actuate.endpoint.OperationResponseBody;
 import org.springframework.boot.actuate.endpoint.SanitizableData;
@@ -212,22 +214,57 @@ public class ConfigurationPropertiesReportEndpoint implements ApplicationContext
 	private ContextConfigurationPropertiesDescriptor describeBeans(ObjectMapper mapper, ApplicationContext context,
 			Predicate<ConfigurationPropertiesBean> beanFilterPredicate, boolean showUnsanitized) {
 		Map<String, ConfigurationPropertiesBean> beans = ConfigurationPropertiesBean.getAll(context);
-		Map<String, ConfigurationPropertiesBeanDescriptor> descriptors = beans.values()
-			.stream()
-			.filter(beanFilterPredicate)
-			.collect(Collectors.toMap(ConfigurationPropertiesBean::getName,
-					(bean) -> describeBean(mapper, bean, showUnsanitized)));
+		Map<String, ConfigurationPropertiesBeanDescriptor> descriptors = new LinkedHashMap<>();
+		beans.values().stream().filter(beanFilterPredicate).forEach((bean) -> {
+			ConfigurationPropertiesBeanDescriptor descriptor = describeBean(mapper, bean, showUnsanitized);
+			if (descriptor != null) {
+				descriptors.put(bean.getName(), descriptor);
+			}
+		});
 		return new ContextConfigurationPropertiesDescriptor(descriptors,
 				(context.getParent() != null) ? context.getParent().getId() : null);
 	}
 
 	private ConfigurationPropertiesBeanDescriptor describeBean(ObjectMapper mapper, ConfigurationPropertiesBean bean,
 			boolean showUnsanitized) {
-		String prefix = bean.getAnnotation().prefix();
-		Map<String, Object> serialized = safeSerialize(mapper, bean.getInstance(), prefix);
-		Map<String, Object> properties = sanitize(prefix, serialized, showUnsanitized);
-		Map<String, Object> inputs = getInputs(prefix, serialized, showUnsanitized);
-		return new ConfigurationPropertiesBeanDescriptor(prefix, properties, inputs);
+		return describeTargetBean(bean.getInstance(), (instance) -> {
+			String prefix = bean.getAnnotation().prefix();
+			Map<String, Object> serialized = safeSerialize(mapper, instance, prefix);
+			Map<String, Object> properties = sanitize(prefix, serialized, showUnsanitized);
+			Map<String, Object> inputs = getInputs(prefix, serialized, showUnsanitized);
+			return new ConfigurationPropertiesBeanDescriptor(prefix, properties, inputs);
+		});
+	}
+
+	private ConfigurationPropertiesBeanDescriptor describeTargetBean(Object bean,
+			Function<Object, ConfigurationPropertiesBeanDescriptor> actionWithTarget) {
+		TargetSource targetSource = null;
+		Object target = bean;
+		while (target instanceof Advised advised) {
+			try {
+				targetSource = advised.getTargetSource();
+				target = targetSource.getTarget();
+			}
+			catch (Exception ex) {
+				return null;
+			}
+		}
+		if (target != null) {
+			try {
+				return actionWithTarget.apply(target);
+			}
+			finally {
+				if (targetSource != null) {
+					try {
+						targetSource.releaseTarget(target);
+					}
+					catch (Exception ex) {
+						// ignore
+					}
+				}
+			}
+		}
+		return null;
 	}
 
 	/**
