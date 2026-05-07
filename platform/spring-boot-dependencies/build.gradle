@@ -437,10 +437,6 @@ bom {
 		}
 	}
 	library("Glassfish JAXB", "4.0.8") {
-		prohibit {
-			versionRange "[4.0.7]"
-			because "it contains a regression (https://github.com/spring-projects/spring-boot/issues/49607#issuecomment-4072451614)"
-		}
 		alignWith {
 			dependencyManagementDeclaredIn("org.glassfish.jaxb:jaxb-bom") {
 				excluding { candidate -> candidate.classifier().equals("sources") }
@@ -1701,7 +1697,7 @@ bom {
 			releaseNotes("https://github.com/neo4j/neo4j-java-driver/releases/tag/{version}")
 		}
 	}
-	library("Netty", "4.2.12.Final") {
+	library("Netty", "4.2.13.Final") {
 		prohibit {
 			contains ".Alpha"
 			contains ".Beta"
