@@ -29,12 +29,16 @@ import java.util.Map;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
 
+import org.springframework.aop.TargetSource;
+import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.boot.actuate.context.properties.ConfigurationPropertiesReportEndpoint.ConfigurationPropertiesBeanDescriptor;
 import org.springframework.boot.actuate.context.properties.ConfigurationPropertiesReportEndpoint.ConfigurationPropertiesDescriptor;
+import org.springframework.boot.actuate.context.properties.ConfigurationPropertiesReportEndpoint.ContextConfigurationPropertiesDescriptor;
 import org.springframework.boot.actuate.endpoint.Show;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.ConfigurationPropertiesBinding;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -254,6 +258,55 @@ class ConfigurationPropertiesReportEndpointSerializationTests {
 	}
 
 	@Test
+	void aopProxyDoesNotLeakAdvisedInternals() {
+		ApplicationContextRunner contextRunner = new ApplicationContextRunner()
+			.withUserConfiguration(CglibProxiedFooConfig.class)
+			.withPropertyValues("foo.name:test");
+		contextRunner.run((context) -> {
+			ConfigurationPropertiesReportEndpoint endpoint = context
+				.getBean(ConfigurationPropertiesReportEndpoint.class);
+			ConfigurationPropertiesDescriptor applicationProperties = endpoint.configurationProperties();
+			ConfigurationPropertiesBeanDescriptor foo = getContextDescriptor(context, applicationProperties).getBeans()
+				.get("foo");
+			assertThat(foo).isNotNull();
+			Map<String, Object> map = foo.getProperties();
+			assertThat(map).containsOnlyKeys("name", "bar");
+			assertThat(map).containsEntry("name", "test");
+		});
+	}
+
+	@Test
+	void aopProxyTargetingAnotherProxyIsUnwrapped() {
+		ApplicationContextRunner contextRunner = new ApplicationContextRunner()
+			.withUserConfiguration(NestedCglibProxiedFooConfig.class)
+			.withPropertyValues("foo.name:nested");
+		contextRunner.run((context) -> {
+			ConfigurationPropertiesReportEndpoint endpoint = context
+				.getBean(ConfigurationPropertiesReportEndpoint.class);
+			ConfigurationPropertiesDescriptor applicationProperties = endpoint.configurationProperties();
+			ConfigurationPropertiesBeanDescriptor foo = getContextDescriptor(context, applicationProperties).getBeans()
+				.get("foo");
+			assertThat(foo).isNotNull();
+			assertThat(foo.getProperties()).containsOnlyKeys("name", "bar");
+			assertThat(foo.getProperties()).containsEntry("name", "nested");
+		});
+	}
+
+	@Test
+	void aopProxyWithUnresolvableTarget() {
+		ApplicationContextRunner contextRunner = new ApplicationContextRunner()
+			.withUserConfiguration(UnresolvableTargetFooConfig.class);
+		contextRunner.run((context) -> {
+			ConfigurationPropertiesReportEndpoint endpoint = context
+				.getBean(ConfigurationPropertiesReportEndpoint.class);
+			ConfigurationPropertiesDescriptor applicationProperties = endpoint.configurationProperties();
+			assertThat(getContextDescriptor(context, applicationProperties).getBeans()).containsKey("foo")
+				.satisfies((beans) -> assertThat(beans.get("foo").getProperties()).containsEntry("error",
+						"Cannot serialize 'foo'"));
+		});
+	}
+
+	@Test
 	void hikariDataSourceConfigurationPropertiesBeanCanBeSerialized() {
 		ApplicationContextRunner contextRunner = new ApplicationContextRunner()
 			.withUserConfiguration(HikariDataSourceConfig.class);
@@ -311,6 +364,14 @@ class ConfigurationPropertiesReportEndpointSerializationTests {
 			assertThat((Map<String, Object>) descriptor.getInputs().get("name")).containsEntry("value",
 					"Complex property value " + ComplexProperty.class.getName());
 		});
+	}
+
+	private ContextConfigurationPropertiesDescriptor getContextDescriptor(AssertableApplicationContext context,
+			ConfigurationPropertiesDescriptor applicationProperties) {
+		ContextConfigurationPropertiesDescriptor contextDescriptor = applicationProperties.getContexts()
+			.get(context.getId());
+		assertThat(contextDescriptor).isNotNull();
+		return contextDescriptor;
 	}
 
 	@Configuration(proxyBeanMethods = false)
@@ -572,6 +633,68 @@ class ConfigurationPropertiesReportEndpointSerializationTests {
 		@ConfigurationProperties("cycle")
 		Cycle cycle() {
 			return new Cycle();
+		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	@Import(Base.class)
+	static class CglibProxiedFooConfig {
+
+		@Bean
+		@ConfigurationProperties("foo")
+		Foo foo() {
+			ProxyFactory proxyFactory = new ProxyFactory(new Foo());
+			proxyFactory.setProxyTargetClass(true);
+			return (Foo) proxyFactory.getProxy();
+		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	@Import(Base.class)
+	static class NestedCglibProxiedFooConfig {
+
+		@Bean
+		@ConfigurationProperties("foo")
+		Foo foo() {
+			ProxyFactory inner = new ProxyFactory(new Foo());
+			inner.setProxyTargetClass(true);
+			ProxyFactory outer = new ProxyFactory(inner.getProxy());
+			outer.setProxyTargetClass(true);
+			return (Foo) outer.getProxy();
+		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	@Import(Base.class)
+	static class UnresolvableTargetFooConfig {
+
+		@Bean
+		@ConfigurationProperties("foo")
+		Foo foo() {
+			ProxyFactory proxyFactory = new ProxyFactory();
+			proxyFactory.setProxyTargetClass(true);
+			proxyFactory.setTargetSource(new TargetSource() {
+
+				@Override
+				public Class<?> getTargetClass() {
+					return Foo.class;
+				}
+
+				@Override
+				public boolean isStatic() {
+					return false;
+				}
+
+				@Override
+				public Object getTarget() throws Exception {
+					throw new IllegalStateException("no target");
+				}
+
+			});
+			return (Foo) proxyFactory.getProxy();
 		}
 
 	}
