@@ -319,7 +319,7 @@ public final class FlywayAutoConfiguration {
 				map.from(properties.isExecuteInTransaction()).to(configuration::executeInTransaction);
 			}
 			catch (NoSuchMethodError ex) {
-				// Flyway < 9.14
+				// Flyway < 10.x/11.x compatibility
 			}
 		}
 
