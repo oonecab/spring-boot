@@ -41,6 +41,7 @@ import org.jspecify.annotations.Nullable;
  * applied.
  *
  * @author Andy Wilkinson
+ * @author Dongliang Xie
  */
 final class ProtobufPluginAction implements PluginApplicationAction {
 
@@ -49,7 +50,7 @@ final class ProtobufPluginAction implements PluginApplicationAction {
 	private static final Dependency grpcDependency = new Dependency("io.grpc", "protoc-gen-grpc-java");
 
 	private static final List<VersionAlignment> versionAlignment = List.of(
-			protocDependency.alignVersionWith("com.google.protobuf", "protobuf-java-util"),
+			protocDependency.alignVersionWith("com.google.protobuf", "protobuf-java"),
 			grpcDependency.alignVersionWith("io.grpc", "grpc-util"));
 
 	@Override

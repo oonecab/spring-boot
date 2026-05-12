@@ -16,6 +16,10 @@
 
 package org.springframework.boot.gradle.plugin;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+
 import org.junit.jupiter.api.TestTemplate;
 
 import org.springframework.boot.gradle.junit.GradleCompatibility;
@@ -27,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Integration tests for {@link ProtobufPluginAction}.
  *
  * @author Andy Wilkinson
+ * @author Dongliang Xie
  */
 @GradleCompatibility
 class ProtobufPluginActionIntegrationTests {
@@ -57,6 +62,20 @@ class ProtobufPluginActionIntegrationTests {
 	void alignsVersionOfProtocDependency() {
 		assertThat(this.gradleBuild.build("dependencies", "--configuration", "protobufToolsLocator_protoc").getOutput())
 			.contains("com.google.protobuf:protoc:null -> 4.34.0");
+	}
+
+	@TestTemplate
+	void generatesProtoSourcesWhenProtobufJavaProvidesProtocVersion() throws IOException {
+		File proto = new File(this.gradleBuild.getProjectDir(), "src/main/proto/example.proto");
+		proto.getParentFile().mkdirs();
+		Files.writeString(proto.toPath(), """
+				syntax = "proto3";
+				option java_package = "com.example";
+				message Example {
+				  string name = 1;
+				}
+				""");
+		this.gradleBuild.build("generateProto");
 	}
 
 	@TestTemplate
