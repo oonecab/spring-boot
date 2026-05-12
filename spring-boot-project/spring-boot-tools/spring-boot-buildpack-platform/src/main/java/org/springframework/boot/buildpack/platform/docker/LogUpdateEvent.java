@@ -104,6 +104,7 @@ public class LogUpdateEvent extends UpdateEvent {
 	}
 
 	private static byte[] read(InputStream inputStream, long size) throws IOException {
+		Assert.state(size <= Integer.MAX_VALUE, () -> "Log update event data is too large (%d bytes)".formatted(size));
 		byte[] data = new byte[(int) size];
 		int offset = 0;
 		do {
