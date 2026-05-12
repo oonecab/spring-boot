@@ -293,14 +293,16 @@ class ConfigurationPropertiesReportEndpointSerializationTests {
 	}
 
 	@Test
-	void aopProxyWithUnresolvableTargetIsExcluded() {
+	void aopProxyWithUnresolvableTarget() {
 		ApplicationContextRunner contextRunner = new ApplicationContextRunner()
 			.withUserConfiguration(UnresolvableTargetFooConfig.class);
 		contextRunner.run((context) -> {
 			ConfigurationPropertiesReportEndpoint endpoint = context
 				.getBean(ConfigurationPropertiesReportEndpoint.class);
 			ConfigurationPropertiesDescriptor applicationProperties = endpoint.configurationProperties();
-			assertThat(getContextDescriptor(context, applicationProperties).getBeans()).doesNotContainKey("foo");
+			assertThat(getContextDescriptor(context, applicationProperties).getBeans()).containsKey("foo")
+				.satisfies((beans) -> assertThat(beans.get("foo").getProperties()).containsEntry("error",
+						"Cannot serialize 'foo'"));
 		});
 	}
 

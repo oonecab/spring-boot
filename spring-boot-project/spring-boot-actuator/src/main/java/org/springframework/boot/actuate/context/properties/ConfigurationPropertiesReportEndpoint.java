@@ -25,7 +25,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 import java.util.function.Predicate;
 
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
@@ -213,63 +212,28 @@ public class ConfigurationPropertiesReportEndpoint implements ApplicationContext
 
 	private ContextConfigurationPropertiesDescriptor describeBeans(ObjectMapper mapper, ApplicationContext context,
 			Predicate<ConfigurationPropertiesBean> beanFilterPredicate, boolean showUnsanitized) {
+		ApplicationContext parent = context.getParent();
 		Map<String, ConfigurationPropertiesBean> beans = ConfigurationPropertiesBean.getAll(context);
 		Map<String, ConfigurationPropertiesBeanDescriptor> descriptors = new LinkedHashMap<>();
-		beans.values().stream().filter(beanFilterPredicate).forEach((bean) -> {
-			ConfigurationPropertiesBeanDescriptor descriptor = describeBean(mapper, bean, showUnsanitized);
-			if (descriptor != null) {
-				descriptors.put(bean.getName(), descriptor);
-			}
-		});
-		return new ContextConfigurationPropertiesDescriptor(descriptors,
-				(context.getParent() != null) ? context.getParent().getId() : null);
+		beans.values()
+			.stream()
+			.filter(beanFilterPredicate)
+			.forEach((bean) -> descriptors.put(bean.getName(), describeBean(mapper, bean, showUnsanitized)));
+		return new ContextConfigurationPropertiesDescriptor(descriptors, (parent != null) ? parent.getId() : null);
 	}
 
 	private ConfigurationPropertiesBeanDescriptor describeBean(ObjectMapper mapper, ConfigurationPropertiesBean bean,
 			boolean showUnsanitized) {
-		return describeTargetBean(bean.getInstance(), (instance) -> {
-			String prefix = bean.getAnnotation().prefix();
-			Map<String, Object> serialized = safeSerialize(mapper, instance, prefix);
-			Map<String, Object> properties = sanitize(prefix, serialized, showUnsanitized);
-			Map<String, Object> inputs = getInputs(prefix, serialized, showUnsanitized);
-			return new ConfigurationPropertiesBeanDescriptor(prefix, properties, inputs);
-		});
-	}
-
-	private ConfigurationPropertiesBeanDescriptor describeTargetBean(Object bean,
-			Function<Object, ConfigurationPropertiesBeanDescriptor> actionWithTarget) {
-		TargetSource targetSource = null;
-		Object target = bean;
-		while (target instanceof Advised advised) {
-			try {
-				targetSource = advised.getTargetSource();
-				target = targetSource.getTarget();
-			}
-			catch (Exception ex) {
-				return null;
-			}
-		}
-		if (target != null) {
-			try {
-				return actionWithTarget.apply(target);
-			}
-			finally {
-				if (targetSource != null) {
-					try {
-						targetSource.releaseTarget(target);
-					}
-					catch (Exception ex) {
-						// ignore
-					}
-				}
-			}
-		}
-		return null;
+		String prefix = bean.getAnnotation().prefix();
+		Map<String, Object> serialized = safeSerialize(mapper, bean.getInstance(), prefix);
+		Map<String, Object> properties = sanitize(prefix, serialized, showUnsanitized);
+		Map<String, Object> inputs = getInputs(prefix, serialized, showUnsanitized);
+		return new ConfigurationPropertiesBeanDescriptor(prefix, properties, inputs);
 	}
 
 	/**
-	 * Cautiously serialize the bean to a map (returning a map with an error message
-	 * instead of throwing an exception if there is a problem).
+	 * Cautiously serialize the ultimate bean target to a map (returning a map with an
+	 * error message instead of throwing an exception if there is a problem).
 	 * @param mapper the object mapper
 	 * @param bean the source bean
 	 * @param prefix the prefix
@@ -278,6 +242,18 @@ public class ConfigurationPropertiesReportEndpoint implements ApplicationContext
 	@SuppressWarnings({ "unchecked" })
 	private Map<String, Object> safeSerialize(ObjectMapper mapper, Object bean, String prefix) {
 		try {
+			if (bean instanceof Advised advised) {
+				TargetSource targetSource = advised.getTargetSource();
+				Object target = targetSource.getTarget();
+				try {
+					return safeSerialize(mapper, target, prefix);
+				}
+				finally {
+					if (target != null) {
+						targetSource.releaseTarget(target);
+					}
+				}
+			}
 			return new HashMap<>(mapper.convertValue(bean, Map.class));
 		}
 		catch (Exception ex) {
