@@ -334,21 +334,21 @@ class StandardStackTracePrinterTests {
 		Throwable exception = TestException.create();
 		StandardStackTracePrinter printer = StandardStackTracePrinter.rootLast()
 			.withHashes((frame) -> Objects.hash(frame.getClassName(), frame.getMethodName()));
-		assertThat(printer.printStackTraceToString(exception)).isEqualToNormalizingNewlines("""
+		assertThatCleanedStackTraceMatches(printer, exception, """
 				<#cc3eebec> java.lang.RuntimeException: exception
-					at org.springframework.boot.logging.TestException.actualCreateException(TestException.java:63)
-					at org.springframework.boot.logging.TestException.createException(TestException.java:59)
-					at org.springframework.boot.logging.TestException.createTestException(TestException.java:49)
-					at org.springframework.boot.logging.TestException$CreatorThread.run(TestException.java:77)
+					at org.springframework.boot.logging.TestException.actualCreateException(TestException.java:NN)
+					at org.springframework.boot.logging.TestException.createException(TestException.java:NN)
+					at org.springframework.boot.logging.TestException.createTestException(TestException.java:NN)
+					at org.springframework.boot.logging.TestException$CreatorThread.run(TestException.java:NN)
 					Suppressed: <#834defc3> java.lang.RuntimeException: suppressed
-						at org.springframework.boot.logging.TestException.createTestException(TestException.java:50)
+						at org.springframework.boot.logging.TestException.createTestException(TestException.java:NN)
 						... 1 more
 				Caused by: <#611639c5> java.lang.RuntimeException: cause
-					at org.springframework.boot.logging.TestException.createCause(TestException.java:55)
-					at org.springframework.boot.logging.TestException.createTestException(TestException.java:48)
+					at org.springframework.boot.logging.TestException.createCause(TestException.java:NN)
+					at org.springframework.boot.logging.TestException.createTestException(TestException.java:NN)
 					... 1 more
 				Caused by: <#834defc3> java.lang.RuntimeException: root
-					at org.springframework.boot.logging.TestException.createTestException(TestException.java:47)
+					at org.springframework.boot.logging.TestException.createTestException(TestException.java:NN)
 					... 1 more
 					""");
 	}
