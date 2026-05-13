@@ -16,8 +16,6 @@
 
 package org.springframework.boot.jetty;
 
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.function.Supplier;
 
 import org.apache.commons.logging.Log;
@@ -27,7 +25,6 @@ import org.eclipse.jetty.server.Server;
 
 import org.springframework.boot.web.server.GracefulShutdownCallback;
 import org.springframework.boot.web.server.GracefulShutdownResult;
-import org.springframework.util.Assert;
 
 /**
  * Handles Jetty graceful shutdown.
@@ -59,17 +56,7 @@ final class GracefulShutdown {
 	}
 
 	private void shutdown(Connector connector) {
-		try {
-			Future<Void> result = connector.shutdown();
-			Assert.state(result != null, "'result' must not be null");
-			result.get();
-		}
-		catch (InterruptedException ex) {
-			Thread.currentThread().interrupt();
-		}
-		catch (ExecutionException ex) {
-			// Continue
-		}
+		connector.shutdown();
 	}
 
 	private void awaitShutdown(GracefulShutdownCallback callback) {
